@@ -6,6 +6,12 @@ const cheerio = require('cheerio');
 var http = require('http');
 var fs = require('fs');
 
+// For job scheduling
+var schedule = require('node-schedule');
+
+// For DB
+var mongo = require('mongodb');
+
 // Configure logger settings
 logger.remove(logger.transports.Console);
 logger.add(logger.transports.Console, {
@@ -19,11 +25,141 @@ var bot = new Discord.Client({
    	autorun: true
 });
 
+var job = NaN;
+
+var MongoClient = require('mongodb').MongoClient;
+
+// var uri = "mongodb://localhost:27017/"
+var uri = process.env.MONGODB_URI;
+
+/* ------------------------------------------------------------
+ * FUNCTIONS
+ * ------------------------------------------------------------*/
+
+function sendMessage(channelID, message) {
+    console.log("Sending message: " + message + " to channel: " + channelID);
+    if(bot) {
+        bot.sendMessage({
+            to: channelID,
+            message: message
+        });
+    }
+}
+
+function cancelJob() {
+    if(job) {
+        job.cancel();
+        job = NaN;
+    }
+}
+
+function scheduleJob() {
+    if(job) {
+        console.log("Job is already running...");
+        return;
+    }
+
+    // Second (0-59) | Min (0-59) | Hour (0-23) | Day of Month (1-31) | Month (1-12) | Day of Week (0-7, 0 or 7 = Sunday)
+    var rule = new schedule.RecurrenceRule();
+
+    // Run every minute:
+    // rule.minute = new schedule.Range(0, 59);
+
+    // Run job at 10:05AM (PDT)
+    rule.minute = 5;
+    rule.hour = 10;
+
+    var job = schedule.scheduleJob(rule, function(fireDate){
+        console.log("Job fired: " + fireDate);
+
+        MongoClient.connect(uri, function(err, db) {
+            if (err) {
+                console.log("DB ERROR executing job: " + err);
+                return;
+            }
+
+            db.collection("channels").find({}).toArray(function(err, result) {
+                if (err) {
+                    console.log("DB ERROR executing job: " + err);
+                    return;
+                }
+
+                if(result.length == 0) {
+                    console.log("No subscribed channels... Cancelling job");
+                    cancelJob();
+                    return;
+                }
+
+                for (var i = result.length - 1; i >= 0; i--) {
+                    channel = result[i].channel_id;
+                    console.log("Sending code to channel id: " + channel);
+                    sendCode(channel);
+                }
+            });
+
+            db.close();
+        });
+
+        if(job) console.log('Next job will be run at: ' + job.nextInvocation());
+    });
+
+    if(job) console.log('(NEW) job will be run at: ' + job.nextInvocation());
+}
+
+function sendCode(channelID) {
+    wget('https://store.enmasse.com/closers/items?from_steam=closers.html',
+        function (error, response, body) {
+            if (error) {
+                console.log('--- error:');
+                console.log(error);
+                sendMessage(channelID, "Sorry, something went wrong. :(");
+            } else {
+                var bot_message = "";
+
+                const $ = cheerio.load(body, {
+                    normalizeWhitespace: true,
+                    xmlMode: true
+                });
+                
+                $('div.item:has(span#free-code)').each(function(i, elem) {
+                    freebie = $('h3', this).text();
+                    var code = $('div.code > span#free-code:has(p:not(:has(*))) > p', this).text();
+                    var link = $('div.code > span#free-code:has(p:has(a)) a', this).attr('href');
+                    console.log(code);
+                    console.log(link);
+                    if(code) {
+                        bot_message += "**" + freebie + "** - " + code + "\n";
+                    } else if (link) {
+                        var description = $('div.item > div.description > p', this).text();
+                        bot_message += "**" + freebie + "** - " + description + "\n" + link + "\n";
+                    }
+                });
+
+                sendMessage(channelID, bot_message);
+            }
+        }
+    );
+}
+
+
+/* ------------------------------------------------------------
+ * BOT
+ * ------------------------------------------------------------*/
+
+
 bot.on('ready', function (evt) {
     logger.info('Connected');
     logger.info('Logged in as: ');
     logger.info(bot.username + ' - (' + bot.id + ')');
+
+    scheduleJob();
 });
+
+bot.on('disconnect', function (errMsg, code) {
+    console.log('Disconnected |' + code + ':' + errMsg);
+
+    cancelJob();
+})
 
 bot.on('message', function (user, userID, channelID, message, evt) {
 
@@ -31,70 +167,100 @@ bot.on('message', function (user, userID, channelID, message, evt) {
     if (message.substring(0, 1) == '!') {
         var args = message.substring(1).split(' ');
         var cmd = args[0];
-       
+        var bot_message = '';
+
         args = args.splice(1);
         switch(cmd.toLowerCase()) {
-            // !ping
-            // case 'ping':
-            // 	logger.info('Received ping! sending pong...');
-            //     bot.sendMessage({
-            //         to: channelID,
-            //         message: 'Pong!'
-            //     });
-            // break;
-
             case 'code':
-				wget('https://store.enmasse.com/closers/items?from_steam=closers.html',
-					function (error, response, body) {
-                        bot_message = "";
+            case 'test':
+                sendCode(channelID);
+            break;
 
-						if (error) {
-							console.log('--- error:');
-							console.log(error);
-                            bot_message = "Sorry, something went wrong. :("
-						} else {
-							const $ = cheerio.load(body, {
-							    normalizeWhitespace: true,
-							    xmlMode: true
-							});
-							
-                            $('div.item:has(span#free-code)').each(function(i, elem) {
-                                freebie = $('h3', this).text();
-                                code = $('div.code > span#free-code:has(p:not(:has(*))) > p', this).text();
-                                link = $('div.code > span#free-code:has(p:has(a)) a', this).attr('href');
-                                console.log(code);
-                                console.log(link);
-                                if(code) {
-                                    bot_message += "**" + freebie + "** - " + code + "\n";
-                                } else if (link) {
-                                    description = $('div.item > div.description > p', this).text();
-                                    bot_message += "**" +freebie + "** - " + description + "\n" + link + "\n";
+            case 'subscribe':
+                MongoClient.connect(uri, function(err, db) {
+                    if (err) {
+                        console.log("DB ERROR on subscribe: " + err);
+                        sendMessage(channelID, "Try again later.");
+                        return;
+                    }
+                    
+                    var myobj = { channel_id: channelID };
+
+                    db.collection("channels").findOne(myobj, function(err, result) {
+                        if (err) {
+                            console.log("DB ERROR on subscribe.findOne: " + err);
+                            sendMessage(channelID, "Try again later.");
+                            return;
+                        }
+
+                        if (result) {                               // Channel already subscribed
+                            console.log("Found: " + result.channel_id);
+                            sendMessage(channelID, "Already subscribed.");
+                        } else {                                    // Subscribe channel
+                            db.collection("channels").insertOne(myobj, function(err, res) {
+                                if (err) {
+                                    console.log("DB ERROR on subscribe.insertOne: " + err);
+                                    sendMessage(channelID, "Try again later.");
+                                    return;
                                 }
+                                console.log("1 document inserted - " + JSON.stringify(myobj));
+                                sendMessage(channelID, "Subscribed! Today's dailies are:");
+                                sendCode(channelID);
+                            });
+                        }
+                    });
+
+                    db.close();
+                });
+                break;
+
+            case 'unsubscribe':
+                MongoClient.connect(uri, function(err, db) {
+                    if (err) {
+                        console.log("DB ERROR unsubscribe: " + err);
+                        sendMessage(channelID, "Try again later.");
+                        return;
+                    }
+
+                    var myobj = { channel_id: channelID };
+
+                    db.collection("channels").findOne(myobj, function(err, result) {
+                        if (err) {
+                            console.log("DB ERROR unsubscribe.findOne: " + err);
+                            sendMessage(channelID, "Try again later.");
+                            return;
+                        }
+
+                        if (result) {                                   // Unsubscribe channel
+                            console.log("Found: " + result.name);
+
+                            db.collection("channels").deleteOne(myobj, function(err, res) {
+
+                                if (err) {
+                                    console.log("DB ERROR unsubscribe.deleteOne: " + err);
+                                    sendMessage(channelID, "Try again later.");
+                                    return;
+                                }
+
+                                console.log("1 document deleted - " + JSON.stringify(myobj));
+                                sendMessage(channelID, "Unsubcribed!");
                             });
 
-                            console.log(bot_message);
-						}
+                        } else {                                        // Channel not subscribed
+                            sendMessage(channelID, "Already unsubscribed.");
+                        }
+                    });
 
-                        bot.sendMessage({
-                            to: channelID,
-                            message: bot_message
-                        });
-					}
-				);
-            	break;
+                    db.close();
+                });
+                break;
 
             case 'help':
-            	bot.sendMessage({
-            		to: channelID,
-            		message: 'Commands: `!code`'
-            	});
-            	break;
+                sendMessage(channelID, 'Commands: `!code` `!subscribe` `!unsubscribe`');
+                break;
 
             default:
-            	bot.sendMessage({
-            		to: channelID,
-            		message: 'Try `!help` for a list of commands.'
-            	});
+                // sendMessage(channelID, 'Try `!help` for a list of commands.')''
          }
      }
 });
