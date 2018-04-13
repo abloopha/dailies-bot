@@ -1,0 +1,14 @@
+{
+	"name": "dailies-bot",
+	"version": "1.0.0",
+	"description": "Closers Daily Code",
+	"main": "bot.js",
+	"author": "abloopha",
+	"dependencies": {
+		"cheerio": "^1.0.0-rc.2",
+		"discord.io": "github:woor/discord.io#gateway_v6",
+		"node-schedule": "^1.3.0",
+		"node-wget": "^0.4.2",
+		"winston": "^2.4.1"
+	}
+}
