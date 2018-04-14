@@ -66,9 +66,9 @@ function scheduleJob() {
     // Run every minute:
     // rule.minute = new schedule.Range(0, 59);
 
-    // Run job at 10:05AM (PDT) = 17:05PM (UTC)
-    rule.minute = 5;
-    rule.hour = 17;
+    // Run job at 11:30AM (PDT) => 18:30PM (UTC)
+    rule.minute = 30;
+    rule.hour = 18;
 
     var job = schedule.scheduleJob(rule, function(fireDate){
         console.log("Job fired: " + fireDate);
