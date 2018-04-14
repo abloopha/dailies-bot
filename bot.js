@@ -29,8 +29,9 @@ var job = NaN;
 
 var MongoClient = require('mongodb').MongoClient;
 
-// var uri = "mongodb://localhost:27017/"
+// var uri = "mongodb://localhost:27017/";
 var uri = process.env.MONGODB_URI;
+var dbName = process.env.DB_NAME;
 
 /* ------------------------------------------------------------
  * FUNCTIONS
@@ -78,7 +79,9 @@ function scheduleJob() {
                 return;
             }
 
-            db.collection("channels").find({}).toArray(function(err, result) {
+            var dbo = db.db(dbName);
+
+            dbo.collection("channels").find({}).toArray(function(err, result) {
                 if (err) {
                     console.log("DB ERROR executing job: " + err);
                     return;
@@ -87,6 +90,7 @@ function scheduleJob() {
                 if(result.length == 0) {
                     console.log("No subscribed channels... Cancelling job");
                     cancelJob();
+                    db.close();
                     return;
                 }
 
@@ -95,9 +99,9 @@ function scheduleJob() {
                     console.log("Sending code to channel id: " + channel);
                     sendCode(channel);
                 }
-            });
-
-            db.close();
+                
+                db.close();
+              });
         });
 
         if(job) console.log('Next job will be run at: ' + job.nextInvocation());
@@ -183,13 +187,14 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         sendMessage(channelID, "Try again later.");
                         return;
                     }
-                    
+                    var dbo = db.db(dbName);
                     var myobj = { channel_id: channelID };
 
-                    db.collection("channels").findOne(myobj, function(err, result) {
+                    dbo.collection("channels").findOne(myobj, function(err, result) {
                         if (err) {
                             console.log("DB ERROR on subscribe.findOne: " + err);
                             sendMessage(channelID, "Try again later.");
+                            db.close();
                             return;
                         }
 
@@ -197,10 +202,11 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                             console.log("Found: " + result.channel_id);
                             sendMessage(channelID, "Already subscribed.");
                         } else {                                    // Subscribe channel
-                            db.collection("channels").insertOne(myobj, function(err, res) {
+                            dbo.collection("channels").insertOne(myobj, function(err, res) {
                                 if (err) {
                                     console.log("DB ERROR on subscribe.insertOne: " + err);
                                     sendMessage(channelID, "Try again later.");
+                                    db.close();
                                     return;
                                 }
                                 console.log("1 document inserted - " + JSON.stringify(myobj));
@@ -208,9 +214,9 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                                 sendCode(channelID);
                             });
                         }
+                        
+                        db.close();
                     });
-
-                    db.close();
                 });
                 break;
 
@@ -221,24 +227,26 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         sendMessage(channelID, "Try again later.");
                         return;
                     }
-
+                    var dbo = db.db(dbName);
                     var myobj = { channel_id: channelID };
 
-                    db.collection("channels").findOne(myobj, function(err, result) {
+                    dbo.collection("channels").findOne(myobj, function(err, result) {
                         if (err) {
                             console.log("DB ERROR unsubscribe.findOne: " + err);
                             sendMessage(channelID, "Try again later.");
+                            db.close();
                             return;
                         }
 
                         if (result) {                                   // Unsubscribe channel
                             console.log("Found: " + result.name);
 
-                            db.collection("channels").deleteOne(myobj, function(err, res) {
+                            dbo.collection("channels").deleteOne(myobj, function(err, res) {
 
                                 if (err) {
                                     console.log("DB ERROR unsubscribe.deleteOne: " + err);
                                     sendMessage(channelID, "Try again later.");
+                                    db.close();
                                     return;
                                 }
 
@@ -249,9 +257,9 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                         } else {                                        // Channel not subscribed
                             sendMessage(channelID, "Already unsubscribed.");
                         }
+                        
+                        db.close();
                     });
-
-                    db.close();
                 });
                 break;
 
