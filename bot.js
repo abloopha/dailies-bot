@@ -26,6 +26,7 @@ var bot = new Discord.Client({
 });
 
 var job = NaN;
+var reconnect = false;
 
 var MongoClient = require('mongodb').MongoClient;
 
@@ -152,17 +153,28 @@ function sendCode(channelID) {
 
 
 bot.on('ready', function (evt) {
-    logger.info('Connected');
-    logger.info('Logged in as: ');
-    logger.info(bot.username + ' - (' + bot.id + ')');
+    if(reconnect) {
+    	console.log('Successful Reconnect!');
+    	reconnect = false;
+    } else {
+    	logger.info('Connected - Logged in as: ');
+    	logger.info(bot.username + ' - (' + bot.id + ')');
+    }
 
     scheduleJob();
 });
 
 bot.on('disconnect', function (errMsg, code) {
     console.log('Disconnected |' + code + ':' + errMsg);
-
-    cancelJob();
+    if(code == 1000 && !reconnect) {
+    	console.log('Attempting reconnect...');
+    	reconnect = true;
+    	bot.connect();
+    } else {
+    	console.log('Cancelling job.');
+    	cancelJob();
+    	reconnect = false;
+	}
 })
 
 bot.on('message', function (user, userID, channelID, message, evt) {
@@ -176,7 +188,6 @@ bot.on('message', function (user, userID, channelID, message, evt) {
         args = args.splice(1);
         switch(cmd.toLowerCase()) {
             case 'code':
-            case 'test':
                 sendCode(channelID);
             break;
 
