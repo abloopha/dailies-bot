@@ -33,6 +33,7 @@ var MongoClient = require('mongodb').MongoClient;
 // var uri = "mongodb://localhost:27017/";
 var uri = process.env.MONGODB_URI;
 var dbName = process.env.DB_NAME;
+var URL = "https://store.enmasse.com/closers/items"
 
 /* ------------------------------------------------------------
  * FUNCTIONS
@@ -126,18 +127,9 @@ function sendCode(channelID) {
                     xmlMode: true
                 });
                 
-                $('div.item:has(span#free-code)').each(function(i, elem) {
+                $('div.item:has(a[data-price="0"])').each(function(i, elem) {
                     freebie = $('h3', this).text();
-                    var code = $('div.code > span#free-code:has(p:not(:has(*))) > p', this).text();
-                    var link = $('div.code > span#free-code:has(p:has(a)) a', this).attr('href');
-                    console.log(code);
-                    console.log(link);
-                    if(code) {
-                        bot_message += "**" + freebie + "** - " + code + "\n";
-                    } else if (link) {
-                        var description = $('div.item > div.description > p', this).text();
-                        bot_message += "**" + freebie + "** - " + description + "\n" + link + "\n";
-                    }
+                    bot_message += "**" + freebie + "** - " + URL + "\n";
                 });
 
                 sendMessage(channelID, bot_message);
